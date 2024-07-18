@@ -3,7 +3,7 @@
 pragma solidity ^0.8.0;
 
 
-contract Timelock {
+contract TimelockVoting {
     uint256 constant MINIMUM_DELAY = 10;
     uint256 constant MAXIMUM_DELAY = 1 days;
     uint256 constant GRACE_PERIOD = 1 days;
@@ -34,17 +34,13 @@ contract Timelock {
         }
     }
 
-    event Queued(bytes32 txCash);
+    event Queued(bytes32 txCash, uint num);
     event Executed(bytes32 txCash);
     event Discarded(bytes32 txCash);
 
     modifier onlyOwner() {
         require(isOwner[msg.sender], "Not an owner");
         _;
-    }
-
-    function demo() external {
-
     }
 
     function abiEncodeData(string calldata _msg) external pure returns(bytes memory) {
@@ -61,31 +57,43 @@ contract Timelock {
         bytes calldata _data,
         uint256 _value,
         uint256 _execTimestamp
-    ) external onlyOwner {
+    ) external onlyOwner returns(bytes32 txCach) {
         require(
-            _execTimestamp > block.timestamp + MINIMUM_DELAY &&
-            _execTimestamp < block.timestamp + MAXIMUM_DELAY, 
-            "Incorrect execTimestamp"
+            _execTimestamp >  MINIMUM_DELAY + block.timestamp &&
+            _execTimestamp <  MAXIMUM_DELAY + block.timestamp, 
+            "Incorrect execution timestamp"
         );
-        bytes32 txCash = keccak256(
+        txCach = keccak256(
             abi.encode(_to, _func, _data, _value, _execTimestamp)
         );
-        require(!Transactions[txCash].queued, "Already queued");
-        Transactions[txCash].queued = true;
-        emit Queued(txCash);
+        require(!Transactions[txCach].queued, "Already queued");
+        Transactions[txCach].queued = true;
+        emit Queued(txCach, 1);
     }
 
-    function execute(bytes32 txCach) external payable onlyOwner returns (bytes memory) {
+    function execute(
+        address _to,
+        bytes calldata _func,
+        bytes calldata _data,
+        uint256 _value,
+        uint256 _execTimestamp
+    ) external payable onlyOwner returns (bytes memory) {
+        bytes32 txCach = keccak256(
+            abi.encode(_to, _func, _data, _value, _execTimestamp)
+        );
         require(Transactions[txCach].queued, "You need to queue the transaction first");
         require(
-            block.timestamp - _execTimestamp < 0,
+            _execTimestamp < block.timestamp ,
             "not ready to be called yet"
         );
         require(
-            block.timestamp - _execTimestamp > GRACE_PERIOD,
+            block.timestamp < _execTimestamp + GRACE_PERIOD,
             "The transaction is expired"
         );
-        require(Transactions[txCach].confirmationsAmount > totalOwnerCount / 2);
+        require(
+            Transactions[txCach].confirmationsAmount > totalOwnerCount / 2,
+            "Not enough votes"
+        );
 
         bytes memory data;
         if (bytes(_func).length > 0) {
@@ -120,7 +128,7 @@ contract Timelock {
     }
 }
 
-contract AnotherContract{
+contract OtherContract{
     uint public callCount  = 0;
     string public message = "default";
     function someTestFunc(string memory _message) external {
