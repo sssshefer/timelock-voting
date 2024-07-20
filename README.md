@@ -1,4 +1,5 @@
-![image](https://github.com/user-attachments/assets/1ed462f8-6e45-42bd-9586-553c20a6b183)
+![image](https://github.com/user-attachments/assets/2a2dc6dc-6c3a-4b49-8d07-b539efd63d15)
+
 
 
 # Timelock Voting with Multi-Signature Authentication
