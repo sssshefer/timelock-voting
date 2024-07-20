@@ -32,10 +32,10 @@ describe("TimelockVoting", function () {
         const currentTimestamp = Math.round(new Date().getTime() / 1000)
 
         const _to = props.to;
-        const _func = props?.func || "someTestFunc(string)";
-        const _data = props?.data || "Hiiii test";
-        const _value = props?.value || ethers.parseEther("0.1");
-        const _execTimestamp = props?.execTimestamp || currentTimestamp + execDelay;
+        const _func = props?.func !== undefined ?props?.func : "someTestFunc(string)";
+        const _data = props?.data !== undefined ?props?.data : "Hiiii test";
+        const _value = props?.value !== undefined ? props?.value: ethers.parseEther("0.1");
+        const _execTimestamp = props?.execTimestamp !== undefined ?props?.execTimestamp : currentTimestamp + execDelay;
 
         const tx = await props.contract.addToQueue(
             _to,
@@ -65,7 +65,7 @@ describe("TimelockVoting", function () {
         it("Correct scenario", async function () {
             const { owner1, owner2, tv, other } = await loadFixture(deploy);
 
-            await addTxToQueue({ to: owner1, contract: tv });
+            await addTxToQueue({ to: other, contract: tv });
         })
 
         it("Incorrect delay", async function () {
@@ -87,7 +87,6 @@ describe("TimelockVoting", function () {
 
             expect(
                 addTxToQueue({ to: other, contract: tv })
-
             ).to.be.rejectedWith("Already queued");
         })
     })
@@ -101,7 +100,7 @@ describe("TimelockVoting", function () {
 
             const defaultTxInStorage = await tv.Transactions(txCach);
             expect(defaultTxInStorage.confirmationsAmount).to.eq(0);
-            const defaultConfirmation = await tv.getConfirmation(txCach, owner1);          
+            const defaultConfirmation = await tv.getConfirmation(txCach, owner1);
             expect(defaultConfirmation).to.eq(false);
 
             const tx = await tv.confirm(txCach);
@@ -109,7 +108,7 @@ describe("TimelockVoting", function () {
 
             const TxInStorage = await tv.Transactions(txCach);
             expect(TxInStorage.confirmationsAmount).to.eq(1);
-            const confirmation = await tv.getConfirmation(txCach, owner1);          
+            const confirmation = await tv.getConfirmation(txCach, owner1);
             expect(confirmation).to.eq(true);
         })
 
@@ -121,7 +120,7 @@ describe("TimelockVoting", function () {
 
             const defaultTxInStorage = await tv.Transactions(txCach);
             expect(defaultTxInStorage.confirmationsAmount).to.eq(0);
-            const defaultConfirmation = await tv.getConfirmation(txCach, owner1);          
+            const defaultConfirmation = await tv.getConfirmation(txCach, owner1);
             expect(defaultConfirmation).to.eq(false);
 
             const tx = await tv.confirm(txCach);
@@ -129,31 +128,27 @@ describe("TimelockVoting", function () {
 
             const TxInStorage = await tv.Transactions(txCach);
             expect(TxInStorage.confirmationsAmount).to.eq(1);
-            const confirmation = await tv.getConfirmation(txCach, owner1);          
+            const confirmation = await tv.getConfirmation(txCach, owner1);
             expect(confirmation).to.eq(true);
 
             const txCancel = await tv.cancelConfirmation(txCach);
             const canceledTxInStorage = await tv.Transactions(txCach);
             expect(canceledTxInStorage.confirmationsAmount).to.eq(0);
-            const canceledConfirmation = await tv.getConfirmation(txCach, owner1);          
+            const canceledConfirmation = await tv.getConfirmation(txCach, owner1);
             expect(canceledConfirmation).to.eq(false);
-
         })
     })
 
     describe("Executing transaction", function () {
+        let execDelay = 60;
+        let currentTimestamp = Math.round(new Date().getTime() / 1000);
+        let _func = "someTestFunc(string)";
+        let _data = "Hiiii test";
+        let _value = 10000000;
+        let _execTimestamp = currentTimestamp + execDelay;
+
         it("Correct scenario", async function () {
             const { owner1, owner2, tv, other } = await loadFixture(deploy);
-
-            const abi = new ethers.AbiCoder();
-
-            const execDelay = 60;
-            const currentTimestamp = Math.round(new Date().getTime() / 1000);
-            const _func = "someTestFunc(string)";
-            const _data = "Hiiii test";
-            const _value = 10000000;
-            
-            const _execTimestamp = currentTimestamp + execDelay;
 
             const { txCach } = await addTxToQueue({
                 to: other,
@@ -165,10 +160,11 @@ describe("TimelockVoting", function () {
 
             });
             await ethers.provider.send("evm_increaseTime", [70]);
-            await tv.confirm(txCach);
-            await tv.connect(owner2).confirm(txCach);
+            (await tv.confirm(txCach)).wait();
+            (await tv.connect(owner2).confirm(txCach)).wait();
 
             expect(await other.callCount()).to.eq(0);
+            expect(await other.message()).to.eq('default');
 
             const tx = await tv.execute(
                 other,
@@ -176,14 +172,82 @@ describe("TimelockVoting", function () {
                 _data,
                 _execTimestamp,
                 {
-                    value:_value
+                    value: _value
                 }
             );
-           
+
             const rc = await tx.wait();
 
-            
             expect(await other.callCount()).to.eq(1);
+            expect(await other.message()).to.eq('Hiiii test');
+
+        })
+
+        it("Too early execution", async function () {
+            const { owner1, owner2, tv, other } = await loadFixture(deploy);
+
+            const { txCach } = await addTxToQueue({
+                to: other,
+                contract: tv,
+                func: _func,
+                data: _data,
+                value: _value,
+                execTimestamp: _execTimestamp
+
+            });
+            await ethers.provider.send("evm_increaseTime", [50]);
+            await tv.confirm(txCach);
+            await tv.connect(owner2).confirm(txCach);
+
+            expect(await other.callCount()).to.eq(0);
+            expect(await other.message()).to.eq('default');
+
+            expect(
+                tv.execute(
+                    other,
+                    _func,
+                    _data,
+                    _execTimestamp,
+                    {
+                        value: _value
+                    }
+                )
+            ).to.be.rejectedWith('not ready to be called yet');
+        })
+
+        it("Empty calldata transaction", async function () {
+            const { owner1, owner2, tv, other } = await loadFixture(deploy);
+
+            const { txCach } = await addTxToQueue({
+                to: other,
+                contract: tv,
+                func: '',
+                data: '',
+                value: _value,
+                execTimestamp: _execTimestamp
+            });
+            await ethers.provider.send("evm_increaseTime", [70]);
+
+            await tv.confirm(txCach);
+            await tv.connect(owner2).confirm(txCach);
+
+            expect(await other.callCount()).to.eq(0);
+            expect(await other.message()).to.eq('default');
+
+            const tx = await tv.execute(
+                other,
+                '',
+                '',
+                _execTimestamp,
+                {
+                    value: _value
+                }
+            );
+            
+            const rc = await tx.wait();
+                
+            expect(await other.message()).to.eq('Filled with money');
+            expect(await ethers.provider.getBalance(other)).to.eq(_value);
         })
     })
 });
