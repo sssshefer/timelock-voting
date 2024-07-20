@@ -98,12 +98,46 @@ describe("TimelockVoting", function () {
 
             const { txCach } = await addTxToQueue({ to: other, contract: tv });
             await ethers.provider.send("evm_increaseTime", [70]);
+
+            const defaultTxInStorage = await tv.Transactions(txCach);
+            expect(defaultTxInStorage.confirmationsAmount).to.eq(0);
+            const defaultConfirmation = await tv.getConfirmation(txCach, owner1);          
+            expect(defaultConfirmation).to.eq(false);
+
             const tx = await tv.confirm(txCach);
             await tx.wait()
+
             const TxInStorage = await tv.Transactions(txCach);
             expect(TxInStorage.confirmationsAmount).to.eq(1);
             const confirmation = await tv.getConfirmation(txCach, owner1);          
             expect(confirmation).to.eq(true);
+        })
+
+        it("Canceling vote", async function () {
+            const { owner1, owner2, tv, other } = await loadFixture(deploy);
+
+            const { txCach } = await addTxToQueue({ to: other, contract: tv });
+            await ethers.provider.send("evm_increaseTime", [70]);
+
+            const defaultTxInStorage = await tv.Transactions(txCach);
+            expect(defaultTxInStorage.confirmationsAmount).to.eq(0);
+            const defaultConfirmation = await tv.getConfirmation(txCach, owner1);          
+            expect(defaultConfirmation).to.eq(false);
+
+            const tx = await tv.confirm(txCach);
+            await tx.wait()
+
+            const TxInStorage = await tv.Transactions(txCach);
+            expect(TxInStorage.confirmationsAmount).to.eq(1);
+            const confirmation = await tv.getConfirmation(txCach, owner1);          
+            expect(confirmation).to.eq(true);
+
+            const txCancel = await tv.cancelConfirmation(txCach);
+            const canceledTxInStorage = await tv.Transactions(txCach);
+            expect(canceledTxInStorage.confirmationsAmount).to.eq(0);
+            const canceledConfirmation = await tv.getConfirmation(txCach, owner1);          
+            expect(canceledConfirmation).to.eq(false);
+
         })
     })
 
